@@ -1,0 +1,7 @@
+node_modules/
+.env
+.wwebjs_auth/
+.wwebjs_cache/
+client_secret_*.json
+mybot.js
+*.log
