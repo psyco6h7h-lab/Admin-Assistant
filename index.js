@@ -3,7 +3,7 @@ const { startWhatsAppClient } = require('./src/core/whatsapp');
 const { connectDB } = require('./src/database/connection');
 
 // Initialize dependencies
-console.log("Starting the Antigravity Agent Engine...");
+console.log("Starting the Admin Assistant Engine...");
 
 // 1. Connect database
 connectDB();

@@ -170,6 +170,77 @@ const tools = [
                     },
                     required: ["fileId", "mimeType"],
                 },
+            },
+            {
+                name: "getStudentInfo",
+                description: "Searches the campus database for a student by their partial or full name to find their attendance logs, phone number, email, and fee tracking (Paid/Due).",
+                parameters: {
+                    type: "OBJECT",
+                    properties: { searchName: { type: "STRING", description: "The name of the student to search for" } },
+                    required: ["searchName"],
+                },
+            },
+            {
+                name: "reportFault",
+                description: "Reports a broken equipment or facility issue to the campus database.",
+                parameters: {
+                    type: "OBJECT",
+                    properties: {
+                        description: { type: "STRING", description: "What is broken and needs fixing" },
+                        location: { type: "STRING", description: "Where the issue is located (e.g. Room 101)" },
+                        reportedBy: { type: "STRING", description: "Name or identifier of the person reporting the issue" }
+                    },
+                    required: ["description", "location"],
+                },
+            },
+            {
+                name: "listOpenFaults",
+                description: "Lists all currently open maintenance fault reports in the campus database.",
+            },
+            {
+                name: "listAllStudents",
+                description: "Retrieves a generic list of all students currently registered in the database. Use this ONLY when asked to see everyone's names. DO NOT use this to count total students. Use executeReadOnlyQuery for counting.",
+            },
+            {
+                name: "getAttendanceSummary",
+                description: "Retrieves the total aggregate count of how many students are present vs absent across the entire database. Use this when the user asks for the total, or to sort/summarize attendance.",
+            },
+            {
+                name: "executeReadOnlyQuery",
+                description: "Executes a custom PostgreSQL SELECT query against the 'students' or 'faults' tables. Use this ANY TIME you need to perform custom calculations, counts, sums, or sorting that your other tools cannot do. Example: SELECT SUM(CAST(fee_paid AS INTEGER)) FROM students; NOTE: Only SELECT is allowed. INSERT/UPDATE/DELETE are strictly blocked.",
+                parameters: {
+                    type: "OBJECT",
+                    properties: { sql: { type: "STRING", description: "The raw PostgreSQL SELECT query string you want to execute." } },
+                    required: ["sql"],
+                },
+            },
+            {
+                name: "webSearch",
+                description: "Searches the live internet for up-to-date information, news, weather, or facts. Returns the top 4 results.",
+                parameters: {
+                    type: "OBJECT",
+                    properties: { query: { type: "STRING", description: "The search query" } },
+                    required: ["query"],
+                },
+            },
+            {
+                name: "broadcastMessage",
+                description: "Sends a direct WhatsApp message to an array of specific phone numbers. Use this to explicitly send answers or announcements to users, or to broadcast to multiple users at once.",
+                parameters: {
+                    type: "OBJECT",
+                    properties: { 
+                        numbers: { 
+                            type: "ARRAY", 
+                            items: { type: "STRING" },
+                            description: "An array of phone numbers (e.g. ['918328390911', '1234567890']). Do not include spaces or symbols if possible." 
+                        },
+                        message: {
+                            type: "STRING",
+                            description: "The text message content to send."
+                        }
+                    },
+                    required: ["numbers", "message"],
+                },
             }
         ],
     },
@@ -185,7 +256,11 @@ const apiKeys = [
     process.env.GEMINI_API_KEY,
     process.env.GEMINI_API_KEY_2,
     process.env.GEMINI_API_KEY_3,
-    process.env.GEMINI_API_KEY_4
+    process.env.GEMINI_API_KEY_4,
+    process.env.GEMINI_API_KEY_5,
+    process.env.GEMINI_API_KEY_6,
+    process.env.GEMINI_API_KEY_7,
+    process.env.GEMINI_API_KEY_8
 ].filter(key => key); // Exclude undefined/empty keys
 
 let currentKeyIndex = 0;
@@ -268,9 +343,12 @@ async function askGemini(userId, prompt, mediaPart, updateCallback) {
             return response.text();
 
         } catch (error) {
-            // Check if it's a Rate Limit error (429) AND we have backup keys
-            if (error.status === 429 && apiKeys.length > 1) {
-                console.warn(`[WARNING] Gemini Key ${currentKeyIndex + 1} hit rate limit (429). Switching to next key...`);
+            // 429 = Rate Limit | 403 = Forbidden (Out of quota/disabled) | 401 = Unauthorized (Invalid API Key)
+            const isRetriableError = error.status === 429 || error.status === 403 || error.status === 401;
+            
+            // Check if it's a key-related error AND we haven't looped through all keys yet
+            if (isRetriableError && retries < apiKeys.length) {
+                console.warn(`[WARNING] Gemini Key ${currentKeyIndex + 1} failed (Status: ${error.status}). Switching to next key...`);
 
                 // Move to the next key
                 currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;

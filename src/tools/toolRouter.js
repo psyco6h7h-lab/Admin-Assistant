@@ -1,7 +1,9 @@
 const { sendEmailTool, listEmails, readEmail, deleteEmail } = require('../tools/gmailTool');
 const { listEvents, createEvent, updateEvent, deleteEvent } = require('../tools/calendarTool');
 const { searchFiles, createDriveFile, readFile, updateDriveFile, renameFile, deleteFile, exportDriveFile } = require('../tools/driveTool');
-
+const { getStudentInfo, reportFault, listOpenFaults, listAllStudents, getAttendanceSummary, executeReadOnlyQuery } = require('../tools/databaseTool');
+const { webSearch } = require('../tools/webTool');
+const { broadcastMessage } = require('../tools/bulkMessageTool');
 async function executeTool(toolName, args, originalMsg) {
     let result = '';
     try {
@@ -35,6 +37,22 @@ async function executeTool(toolName, args, originalMsg) {
             result = await deleteFile(args.fileId);
         } else if (toolName === 'exportDriveFile') {
             result = await exportDriveFile(args.fileId, args.mimeType);
+        } else if (toolName === 'getStudentInfo') {
+            result = await getStudentInfo(args.searchName);
+        } else if (toolName === 'reportFault') {
+            result = await reportFault(args.description, args.location, args.reportedBy);
+        } else if (toolName === 'listOpenFaults') {
+            result = await listOpenFaults();
+        } else if (toolName === 'listAllStudents') {
+            result = await listAllStudents();
+        } else if (toolName === 'getAttendanceSummary') {
+            result = await getAttendanceSummary();
+        } else if (toolName === 'executeReadOnlyQuery') {
+            result = await executeReadOnlyQuery(args.sql);
+        } else if (toolName === 'webSearch') {
+            result = await webSearch(args.query);
+        } else if (toolName === 'broadcastMessage') {
+            result = await broadcastMessage(args.numbers, args.message);
         } else {
             result = `Error: Tool ${toolName} not found.`;
         }

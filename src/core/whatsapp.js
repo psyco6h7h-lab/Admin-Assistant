@@ -2,6 +2,8 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const { handleMessage } = require('../handlers/messageHandler');
 
+let activeClient = null;
+
 function startWhatsAppClient() {
     const client = new Client({
         authStrategy: new LocalAuth(),
@@ -22,13 +24,19 @@ function startWhatsAppClient() {
     });
 
     client.on('ready', () => {
-        console.log('Antigravity Agent is now initialized and online!');
+        console.log('Admin Assistant is now initialized and online!');
     });
 
     // Pass messages to our handler
     client.on('message_create', handleMessage);
 
     client.initialize();
+    
+    activeClient = client;
 }
 
-module.exports = { startWhatsAppClient };
+function getWhatsAppClient() {
+    return activeClient;
+}
+
+module.exports = { startWhatsAppClient, getWhatsAppClient };
