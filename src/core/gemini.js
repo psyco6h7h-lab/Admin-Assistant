@@ -172,6 +172,19 @@ const tools = [
                 },
             },
             {
+                name: "shareDriveFile",
+                description: "Shares a Google Drive file with a specific email address and assigns them a role (reader, commenter, writer). You MUST ask the user what role they want to give before you call this tool.",
+                parameters: {
+                    type: "OBJECT",
+                    properties: {
+                        fileId: { type: "STRING", description: "Google Drive File ID" },
+                        emailAddress: { type: "STRING", description: "The email address to share the file with" },
+                        role: { type: "STRING", description: "The permission role. Must be 'reader', 'commenter', or 'writer'." }
+                    },
+                    required: ["fileId", "emailAddress", "role"],
+                },
+            },
+            {
                 name: "getStudentInfo",
                 description: "Searches the campus database for a student by their partial or full name to find their attendance logs, phone number, email, and fee tracking (Paid/Due).",
                 parameters: {
@@ -228,11 +241,11 @@ const tools = [
                 description: "Sends a direct WhatsApp message to an array of specific phone numbers. Use this to explicitly send answers or announcements to users, or to broadcast to multiple users at once.",
                 parameters: {
                     type: "OBJECT",
-                    properties: { 
-                        numbers: { 
-                            type: "ARRAY", 
+                    properties: {
+                        numbers: {
+                            type: "ARRAY",
                             items: { type: "STRING" },
-                            description: "An array of phone numbers (e.g. ['918328390911', '1234567890']). Do not include spaces or symbols if possible." 
+                            description: "An array of phone numbers (e.g. ['918328390911', '1234567890']). Do not include spaces or symbols if possible."
                         },
                         message: {
                             type: "STRING",
@@ -345,7 +358,7 @@ async function askGemini(userId, prompt, mediaPart, updateCallback) {
         } catch (error) {
             // 429 = Rate Limit | 403 = Forbidden (Out of quota/disabled) | 401 = Unauthorized (Invalid API Key)
             const isRetriableError = error.status === 429 || error.status === 403 || error.status === 401;
-            
+
             // Check if it's a key-related error AND we haven't looped through all keys yet
             if (isRetriableError && retries < apiKeys.length) {
                 console.warn(`[WARNING] Gemini Key ${currentKeyIndex + 1} failed (Status: ${error.status}). Switching to next key...`);

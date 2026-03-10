@@ -74,11 +74,22 @@ async function listEmails(query = '', maxResults = 5) {
         // Fetch brief details for each message
         let result = 'Found emails:\n';
         for (const msg of messages) {
-            const fullMsg = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'metadata', metadataHeaders: ['Subject', 'From'] });
+            const fullMsg = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'metadata', metadataHeaders: ['Subject', 'From', 'To', 'Date'] });
             const headers = fullMsg.data.payload.headers;
             const subject = headers.find(h => h.name === 'Subject')?.value || 'No Subject';
             const from = headers.find(h => h.name === 'From')?.value || 'Unknown Sender';
-            result += `- ID: ${msg.id} | From: ${from} | Subject: ${subject}\n`;
+            const to = headers.find(h => h.name === 'To')?.value || 'Unknown Recipient';
+
+            // Reformat the weird giant Google Date into a cleaner string
+            let date = headers.find(h => h.name === 'Date')?.value || 'Unknown Date';
+            if (date !== 'Unknown Date') {
+                try {
+                    const parsedDate = new Date(date);
+                    date = parsedDate.toLocaleString();
+                } catch (e) { }
+            }
+
+            result += `- ID: ${msg.id} | Date: ${date} | From: ${from} | To: ${to} | Subject: ${subject}\n`;
         }
         return result;
     } catch (error) {
@@ -94,7 +105,14 @@ async function readEmail(messageId) {
 
         const subject = headers.find(h => h.name === 'Subject')?.value || 'No Subject';
         const from = headers.find(h => h.name === 'From')?.value || 'Unknown Sender';
-        const date = headers.find(h => h.name === 'Date')?.value || 'Unknown Date';
+        const to = headers.find(h => h.name === 'To')?.value || 'Unknown Recipient';
+        let date = headers.find(h => h.name === 'Date')?.value || 'Unknown Date';
+        if (date !== 'Unknown Date') {
+            try {
+                const parsedDate = new Date(date);
+                date = parsedDate.toLocaleString();
+            } catch (e) { }
+        }
 
         let body = '';
         if (payload.parts) {
@@ -107,7 +125,7 @@ async function readEmail(messageId) {
             body = Buffer.from(payload.body.data, 'base64').toString('utf-8');
         }
 
-        return `From: ${from}\nDate: ${date}\nSubject: ${subject}\n\nBody:\n${body || 'Could not parse body.'}`;
+        return `From: ${from}\nTo: ${to}\nDate: ${date}\nSubject: ${subject}\n\nBody:\n${body || 'Could not parse body.'}`;
     } catch (error) {
         return `Error reading email: ${error.message}`;
     }

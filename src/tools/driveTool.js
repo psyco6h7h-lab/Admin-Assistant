@@ -109,4 +109,27 @@ async function exportDriveFile(fileId, mimeType) {
     }
 }
 
-module.exports = { createDriveFile, readFile, updateDriveFile, renameFile, deleteFile, searchFiles, exportDriveFile };
+async function shareDriveFile(fileId, emailAddress, role) {
+    try {
+        const validRoles = ['reader', 'commenter', 'writer'];
+        if (!validRoles.includes(role)) {
+            return `Error: Invalid role '${role}'. Must be one of: reader, commenter, writer.`;
+        }
+
+        const res = await drive.permissions.create({
+            fileId: fileId,
+            requestBody: {
+                type: 'user',
+                role: role,
+                emailAddress: emailAddress
+            },
+            fields: 'id',
+        });
+
+        return `Success! File shared with ${emailAddress} as a ${role}. (Permission ID: ${res.data.id})`;
+    } catch (err) {
+        return `Error sharing file: ${err.message}`;
+    }
+}
+
+module.exports = { createDriveFile, readFile, updateDriveFile, renameFile, deleteFile, searchFiles, exportDriveFile, shareDriveFile };

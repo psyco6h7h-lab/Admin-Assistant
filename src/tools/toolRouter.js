@@ -1,6 +1,6 @@
 const { sendEmailTool, listEmails, readEmail, deleteEmail } = require('../tools/gmailTool');
 const { listEvents, createEvent, updateEvent, deleteEvent } = require('../tools/calendarTool');
-const { searchFiles, createDriveFile, readFile, updateDriveFile, renameFile, deleteFile, exportDriveFile } = require('../tools/driveTool');
+const { searchFiles, createDriveFile, readFile, updateDriveFile, renameFile, deleteFile, exportDriveFile, shareDriveFile } = require('../tools/driveTool');
 const { getStudentInfo, reportFault, listOpenFaults, listAllStudents, getAttendanceSummary, executeReadOnlyQuery } = require('../tools/databaseTool');
 const { webSearch } = require('../tools/webTool');
 const { broadcastMessage } = require('../tools/bulkMessageTool');
@@ -37,6 +37,8 @@ async function executeTool(toolName, args, originalMsg) {
             result = await deleteFile(args.fileId);
         } else if (toolName === 'exportDriveFile') {
             result = await exportDriveFile(args.fileId, args.mimeType);
+        } else if (toolName === 'shareDriveFile') {
+            result = await shareDriveFile(args.fileId, args.emailAddress, args.role);
         } else if (toolName === 'getStudentInfo') {
             result = await getStudentInfo(args.searchName);
         } else if (toolName === 'reportFault') {
