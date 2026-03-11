@@ -1,5 +1,6 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { AGENT_PERSONA } = require('./systemPrompt');
+const TokenUsage = require('../database/models/TokenUsage');
 
 // Initialize Gemini with API Key from environment variables
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -278,6 +279,17 @@ const apiKeys = [
 
 let currentKeyIndex = 0;
 
+// Track status of all API keys for the !tokens command
+const apiTokenStatuses = apiKeys.map((key, index) => ({
+    label: `Key ${index + 1}`,
+    maskedKey: (key || "").substring(0, 15) + "...",
+    status: index === 0 ? 'Active (Currently in use)' : 'Active (Standby)'
+}));
+
+function getApiTokenStatus() {
+    return apiTokenStatuses;
+}
+
 function getActiveModel() {
     const activeKey = apiKeys[currentKeyIndex];
     if (!activeKey) throw new Error("No Gemini API keys found!");
@@ -353,7 +365,22 @@ async function askGemini(userId, prompt, mediaPart, updateCallback) {
             }
 
             // 5. The loop finished! Return the final output text to the user
-            return response.text();
+            const finalText = response.text();
+            
+            // LOG USAGE TO MONGODB (Run asynchronously)
+            try {
+                const wordsUsed = (prompt.split(' ').length) + (finalText.split(' ').length);
+                const today = new Date().toISOString().split('T')[0];
+                TokenUsage.findOneAndUpdate(
+                    { dateString: today },
+                    { $inc: { totalWordsSent: wordsUsed }, $set: { lastUpdated: new Date() } },
+                    { upsert: true }
+                ).catch(err => console.error("Error saving token usage:", err.message));
+            } catch (err) {
+                console.error("Error calculating token usage:", err.message);
+            }
+
+            return finalText;
 
         } catch (error) {
             // 429 = Rate Limit | 403 = Forbidden (Out of quota/disabled) | 401 = Unauthorized (Invalid API Key)
@@ -364,7 +391,10 @@ async function askGemini(userId, prompt, mediaPart, updateCallback) {
                 console.warn(`[WARNING] Gemini Key ${currentKeyIndex + 1} failed (Status: ${error.status}). Switching to next key...`);
 
                 // Move to the next key
+                apiTokenStatuses[currentKeyIndex].status = 'RATE LIMITED (Cooling down)';
                 currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
+                apiTokenStatuses[currentKeyIndex].status = 'Active (Currently in use)';
+
                 retries++;
 
                 // Grab the old history before we delete the session
@@ -386,7 +416,7 @@ async function askGemini(userId, prompt, mediaPart, updateCallback) {
         }
     }
 
-    return "All Gemini APi Keys are currently rate limited! Please wait a minute.";
+    return "All Gemini API Keys are currently rate limited! Please wait a minute.";
 }
 
-module.exports = { askGemini };
+module.exports = { askGemini, getApiTokenStatus };
