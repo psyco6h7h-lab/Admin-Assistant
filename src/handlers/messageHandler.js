@@ -1,4 +1,5 @@
-const { askGemini } = require('../core/gemini');
+const { askGemini, getApiTokenStatus } = require('../core/gemini');
+const TokenUsage = require('../database/models/TokenUsage');
 
 // Set to track strangers who have already received the "testing" warning message
 const notifiedStrangers = new Set();
@@ -91,7 +92,51 @@ async function handleMessage(msg) {
         }
 
         if (messageText === '!help') {
-            return sendReply('*🚀 Agent Menu*\n\n!ask [your question] - Ask Gemini\n!ping - Reply with pong\n!whoami - See your name\n!help - Show this list');
+            return sendReply('*🚀 Agent Menu*\n\n!ask [your question] - Ask Gemini\n!ping - Reply with pong\n!whoami - See your name\n!llm [pin] - View API key status (Admin only)\n!help - Show this list');
+        }
+
+        // 🔒 SECURE !llm COMMAND: Admin-Only + PIN Authentication
+        if (messageText.startsWith('!llm')) {
+            // STEP 1: Only the Main Admin can use this command
+            if (!isAdmin) {
+                console.log(`[TOKENS] Denied: ${cleanNumber} is not the Main Admin.`);
+                return sendReply('❌ Access Denied. Only the Main Admin can use this command.');
+            }
+
+            // STEP 2: Verify the PIN
+            const parts = messageText.split(' ');
+            const enteredPin = parts[1] || '';
+            const correctPin = (process.env.ADMIN_PIN || '').replace(/["']/g, '');
+
+            if (!enteredPin || enteredPin !== correctPin) {
+                console.log(`[TOKENS] PIN Authentication Failed for Admin.`);
+                return sendReply('❌ Authentication Failed. Usage: !llm <your_pin>');
+            }
+
+            // STEP 3: Build the status report
+            console.log(`[TOKENS] Admin authenticated. Generating token report...`);
+            const statuses = getApiTokenStatus();
+            let report = '🔒 *ADMIN API KEY STATUS* 🔒\n\n';
+
+            statuses.forEach((keyInfo) => {
+                const icon = keyInfo.status.includes('RATE LIMITED') ? '🔴' : '🟢';
+                report += `${icon} *${keyInfo.label}:* ${keyInfo.maskedKey}\n`;
+                report += `   Status: ${keyInfo.status}\n\n`;
+            });
+
+            report += `Total Keys Loaded: *${statuses.length}/8*\n\n`;
+
+            // STEP 4: Fetch today's usage from MongoDB
+            try {
+                const today = new Date().toISOString().split('T')[0];
+                const usage = await TokenUsage.findOne({ dateString: today });
+                const wordsToday = usage ? usage.totalWordsSent : 0;
+                report += `📊 *Estimated Usage Today:* ~${wordsToday.toLocaleString()} words`;
+            } catch (err) {
+                report += `📊 *Estimated Usage Today:* Unable to fetch (${err.message})`;
+            }
+
+            return sendReply(report);
         }
 
         // Gemini AI Command
