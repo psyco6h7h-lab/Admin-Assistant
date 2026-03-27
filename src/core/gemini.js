@@ -1,8 +1,9 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Groq = require('groq-sdk');
 const { AGENT_PERSONA } = require('./systemPrompt');
 const TokenUsage = require('../database/models/TokenUsage');
 
-// Initialize Gemini with API Key from environment variables
+// Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // Define the tools available to Gemini
@@ -57,7 +58,7 @@ const tools = [
             },
             {
                 name: "createEvent",
-                description: "Creates a Google Calendar event. Example DateTime Format: 2026-03-05T09:00:00-07:00",
+                description: "Creates a Google Calendar event.",
                 parameters: {
                     type: "OBJECT",
                     properties: {
@@ -162,75 +163,75 @@ const tools = [
             },
             {
                 name: "exportDriveFile",
-                description: "Exports a Google Workspace document (e.g. Google Docs, Google Sheets) into a readable format. Do NOT use this for normal files (like .txt or .pdf), only use for Google Workspaces formats.",
+                description: "Exports a Google Workspace document into a readable format.",
                 parameters: {
                     type: "OBJECT",
                     properties: {
                         fileId: { type: "STRING", description: "Google Drive File ID" },
-                        mimeType: { type: "STRING", description: "The target MIME type to export as (e.g. 'text/plain' or 'text/csv')" }
+                        mimeType: { type: "STRING", description: "The target MIME type to export as" }
                     },
                     required: ["fileId", "mimeType"],
                 },
             },
             {
                 name: "shareDriveFile",
-                description: "Shares a Google Drive file with a specific email address and assigns them a role (reader, commenter, writer). You MUST ask the user what role they want to give before you call this tool.",
+                description: "Shares a Google Drive file. Supports roles like 'editor', 'viewer'. If no email is provided, it makes the link Public.",
                 parameters: {
                     type: "OBJECT",
                     properties: {
                         fileId: { type: "STRING", description: "Google Drive File ID" },
-                        emailAddress: { type: "STRING", description: "The email address to share the file with" },
-                        role: { type: "STRING", description: "The permission role. Must be 'reader', 'commenter', or 'writer'." }
+                        emailAddress: { type: "STRING", description: "Email address (optional)" },
+                        role: { type: "STRING", description: "The permission role (editor, viewer, etc)" }
                     },
-                    required: ["fileId", "emailAddress", "role"],
+                    required: ["fileId", "role"],
                 },
             },
             {
                 name: "getStudentInfo",
-                description: "Searches the campus database for a student by their partial or full name to find their attendance logs, phone number, email, and fee tracking (Paid/Due).",
+                description: "Searches the campus database for a student.",
                 parameters: {
                     type: "OBJECT",
-                    properties: { searchName: { type: "STRING", description: "The name of the student to search for" } },
+                    properties: { searchName: { type: "STRING", description: "The student name to search" } },
                     required: ["searchName"],
                 },
             },
             {
                 name: "reportFault",
-                description: "Reports a broken equipment or facility issue to the campus database.",
+                description: "Reports a broken equipment or facility issue.",
                 parameters: {
                     type: "OBJECT",
                     properties: {
-                        description: { type: "STRING", description: "What is broken and needs fixing" },
-                        location: { type: "STRING", description: "Where the issue is located (e.g. Room 101)" },
-                        reportedBy: { type: "STRING", description: "Name or identifier of the person reporting the issue" }
+                        description: { type: "STRING", description: "What is broken" },
+                        location: { type: "STRING", description: "Where is it" },
+                        reportedBy: { type: "STRING", description: "Reporter name" }
                     },
                     required: ["description", "location"],
                 },
             },
             {
                 name: "listOpenFaults",
-                description: "Lists all currently open maintenance fault reports in the campus database.",
+                description: "Lists all currently open maintenance fault reports.",
             },
             {
                 name: "listAllStudents",
-                description: "Retrieves a generic list of all students currently registered in the database. Use this ONLY when asked to see everyone's names. DO NOT use this to count total students. Use executeReadOnlyQuery for counting.",
+                description: "Retrieves a generic list of all students.",
             },
             {
                 name: "getAttendanceSummary",
-                description: "Retrieves the total aggregate count of how many students are present vs absent across the entire database. Use this when the user asks for the total, or to sort/summarize attendance.",
+                description: "Retrieves aggregate present/absent counts.",
             },
             {
                 name: "executeReadOnlyQuery",
-                description: "Executes a custom PostgreSQL SELECT query against the 'students' or 'faults' tables. Use this ANY TIME you need to perform custom calculations, counts, sums, or sorting that your other tools cannot do. Example: SELECT SUM(CAST(fee_paid AS INTEGER)) FROM students; NOTE: Only SELECT is allowed. INSERT/UPDATE/DELETE are strictly blocked.",
+                description: "Executes a custom PostgreSQL SELECT query.",
                 parameters: {
                     type: "OBJECT",
-                    properties: { sql: { type: "STRING", description: "The raw PostgreSQL SELECT query string you want to execute." } },
+                    properties: { sql: { type: "STRING", description: "The SELECT query" } },
                     required: ["sql"],
                 },
             },
             {
                 name: "webSearch",
-                description: "Searches the live internet for up-to-date information, news, weather, or facts. Returns the top 4 results.",
+                description: "Searches the live internet.",
                 parameters: {
                     type: "OBJECT",
                     properties: { query: { type: "STRING", description: "The search query" } },
@@ -239,21 +240,29 @@ const tools = [
             },
             {
                 name: "broadcastMessage",
-                description: "Sends a direct WhatsApp message to an array of specific phone numbers. Use this to explicitly send answers or announcements to users, or to broadcast to multiple users at once.",
+                description: "Sends a direct WhatsApp message.",
                 parameters: {
                     type: "OBJECT",
                     properties: {
-                        numbers: {
-                            type: "ARRAY",
-                            items: { type: "STRING" },
-                            description: "An array of phone numbers (e.g. ['918328390911', '1234567890']). Do not include spaces or symbols if possible."
-                        },
-                        message: {
-                            type: "STRING",
-                            description: "The text message content to send."
-                        }
+                        numbers: { type: "ARRAY", items: { type: "STRING" }, description: "Array of phone numbers" },
+                        message: { type: "STRING", description: "Message content" }
                     },
                     required: ["numbers", "message"],
+                },
+            },
+            {
+                name: "browserAction",
+                description: "Executes a browser action via Chrome DevTools MCP. Actions include: navigate, screenshot, click, fill, evaluate.",
+                parameters: {
+                    type: "OBJECT",
+                    properties: {
+                        action: { type: "STRING", description: "The action to perform (navigate, screenshot, click, fill, evaluate)" },
+                        url: { type: "STRING", description: "URL to navigate to, if action is navigate" },
+                        selector: { type: "STRING", description: "CSS selector, if action is click or fill" },
+                        text: { type: "STRING", description: "Text to type, if action is fill" },
+                        script: { type: "STRING", description: "JavaScript to execute, if action is evaluate" }
+                    },
+                    required: ["action"],
                 },
             }
         ],
@@ -262,10 +271,7 @@ const tools = [
 
 const { executeTool } = require('../tools/toolRouter');
 
-// In-Memory map to store conversations! (Temporary Phase 1 fix until MongoDB)
-const activeChats = {};
-
-// Get all possible API keys from .env
+// Gemini Keys
 const apiKeys = [
     process.env.GEMINI_API_KEY,
     process.env.GEMINI_API_KEY_2,
@@ -275,148 +281,254 @@ const apiKeys = [
     process.env.GEMINI_API_KEY_6,
     process.env.GEMINI_API_KEY_7,
     process.env.GEMINI_API_KEY_8
-].filter(key => key); // Exclude undefined/empty keys
+].filter(key => key);
+
+// Groq Keys
+const groqKeys = [
+    process.env.GROQ_API_KEY_1,
+    process.env.GROQ_API_KEY_2,
+    process.env.GROQ_API_KEY_3,
+    process.env.GROQ_API_KEY_4
+].filter(key => key);
 
 let currentKeyIndex = 0;
+let currentGroqIndex = 0;
 
-// Track status of all API keys for the !tokens command
+// Track status for !llm command
 const apiTokenStatuses = apiKeys.map((key, index) => ({
-    label: `Key ${index + 1}`,
-    maskedKey: (key || "").substring(0, 15) + "...",
-    status: index === 0 ? 'Active (Currently in use)' : 'Active (Standby)'
+    label: `Gemini ${index + 1}`,
+    maskedKey: (key || "").substring(0, 10) + "...",
+    status: index === 0 ? 'Active' : 'Standby'
+}));
+
+const groqTokenStatuses = groqKeys.map((key, index) => ({
+    label: `Groq ${index + 1}`,
+    maskedKey: (key || "").substring(0, 10) + "...",
+    status: 'Standby'
 }));
 
 function getApiTokenStatus() {
-    return apiTokenStatuses;
+    return [...apiTokenStatuses, ...groqTokenStatuses];
 }
 
 function getActiveModel() {
     const activeKey = apiKeys[currentKeyIndex];
     if (!activeKey) throw new Error("No Gemini API keys found!");
-
     const genAI = new GoogleGenerativeAI(activeKey);
+    // Use the latest 2.0 Flash model as requested
     return genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.0-flash", 
         systemInstruction: AGENT_PERSONA,
         tools: tools
     });
 }
 
-// We accept a userId (phone number) and an updateCallback so we can reply 
-// "Executing XYZ..." multiple times during the loop without waiting till the end
-async function askGemini(userId, prompt, mediaPart, updateCallback) {
-    let retries = 0;
+function getGroqClient() {
+    const activeKey = groqKeys[currentGroqIndex];
+    if (!activeKey) throw new Error("No Groq API keys found!");
+    return new Groq({ apiKey: activeKey });
+}
 
-    // Handle optional mediaPart backwards compatibility
-    if (typeof mediaPart === 'function') {
-        updateCallback = mediaPart;
-        mediaPart = null;
-    }
+// Conversation histories
+const activeChats = {}; // For Gemini
+const groqHistories = {}; // For Groq (Messages Array)
 
-    while (retries < apiKeys.length) {
+async function askGemini(userId, prompt, mediaPart, updateCallback, originalMsg) {
+    let geminiRetries = 0;
+    // Updated model list based on discovered availability
+    const modelNames = [
+        "gemini-2.5-flash", 
+        "gemini-3.1-pro-preview", 
+        "gemini-2.0-flash", 
+        "gemini-pro"
+    ];
+    let currentModelIndex = 0;
+
+    // --- PHASE 1: TRY GEMINI KEYS ---
+    while (geminiRetries < apiKeys.length * modelNames.length) {
         try {
-            // 1. Create a Chat session for this specific User OR grab their existing one
-            if (!activeChats[userId]) {
-                const model = getActiveModel();
+            const activeKey = apiKeys[currentKeyIndex];
+            const activeModelName = modelNames[currentModelIndex];
+            
+            const genAI = new GoogleGenerativeAI(activeKey);
+            const model = genAI.getGenerativeModel({
+                model: activeModelName, 
+                systemInstruction: AGENT_PERSONA,
+                tools: tools
+            });
+
+            if (!activeChats[userId] || currentModelIndex > 0) {
                 activeChats[userId] = model.startChat({});
             }
-
             const chat = activeChats[userId];
+            let messageContent = mediaPart ? [prompt, mediaPart] : prompt;
 
-            // 2. Send the user's message (Text only, or Text + Multimodal Media)
-            let messageContent = prompt;
-            if (mediaPart) {
-                messageContent = [prompt, mediaPart];
-            }
             let result = await chat.sendMessage(messageContent);
             let response = await result.response;
 
-            // 3. The Agentic Loop (ReAct Loop)
-            // Keep looping as long as the AI wants to run a tool
             while (response.functionCalls() && response.functionCalls().length > 0) {
                 const calls = response.functionCalls();
                 const functionResponses = [];
 
-                // Execute all requested tools in parallel (or one by one)
                 for (const call of calls) {
-                    const toolName = call.name;
-                    const args = call.args;
-
-                    // Let the user know we're doing something
-                    if (updateCallback) {
-                        updateCallback(`[Agent] Executing tool: ${toolName}...`);
-                    }
-
-                    // Actually run the tool!
-                    const toolResult = await executeTool(toolName, args, null);
-
-                    // Package the tool result into the exact format Gemini expects
+                    if (updateCallback) updateCallback(`[Agent] Executing tool: ${call.name}...`);
+                    const toolResult = await executeTool(call.name, call.args, originalMsg);
                     functionResponses.push({
-                        functionResponse: {
-                            name: toolName,
-                            response: { result: toolResult }
-                        }
+                        functionResponse: { name: call.name, response: { result: toolResult } }
                     });
                 }
-
-                // 4. Send the tool results BACK to Gemini so it can read them!
                 result = await chat.sendMessage(functionResponses);
                 response = await result.response;
             }
 
-            // 5. The loop finished! Return the final output text to the user
             const finalText = response.text();
-            
-            // LOG USAGE TO MONGODB (Run asynchronously)
-            try {
-                const wordsUsed = (prompt.split(' ').length) + (finalText.split(' ').length);
-                const today = new Date().toISOString().split('T')[0];
-                TokenUsage.findOneAndUpdate(
-                    { dateString: today },
-                    { $inc: { totalWordsSent: wordsUsed }, $set: { lastUpdated: new Date() } },
-                    { upsert: true }
-                ).catch(err => console.error("Error saving token usage:", err.message));
-            } catch (err) {
-                console.error("Error calculating token usage:", err.message);
-            }
-
+            logUsage(prompt, finalText);
             return finalText;
 
         } catch (error) {
-            // 429 = Rate Limit | 403 = Forbidden (Out of quota/disabled) | 401 = Unauthorized (Invalid API Key)
-            const isRetriableError = error.status === 429 || error.status === 403 || error.status === 401;
-
-            // Check if it's a key-related error AND we haven't looped through all keys yet
-            if (isRetriableError && retries < apiKeys.length) {
-                console.warn(`[WARNING] Gemini Key ${currentKeyIndex + 1} failed (Status: ${error.status}). Switching to next key...`);
-
-                // Move to the next key
-                apiTokenStatuses[currentKeyIndex].status = 'RATE LIMITED (Cooling down)';
-                currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
-                apiTokenStatuses[currentKeyIndex].status = 'Active (Currently in use)';
-
-                retries++;
-
-                // Grab the old history before we delete the session
-                let oldHistory = [];
-                if (activeChats[userId]) {
-                    oldHistory = await activeChats[userId].getHistory();
+            console.error(`[GEMINI ERROR] Model: ${modelNames[currentModelIndex]} | Key: ${currentKeyIndex + 1}`, error.message || error);
+            
+            const status = error.status || (error.response ? error.response.status : undefined);
+            const isRetriable = status === 429 || status === 404 || status === 403 || status === 401 || (error.message && (error.message.includes("429") || error.message.includes("404") || error.message.includes("403") || error.message.includes("401")));
+            
+            if (isRetriable && geminiRetries < (apiKeys.length * modelNames.length) - 1) {
+                geminiRetries++;
+                
+                // Cycle Model first
+                currentModelIndex = (currentModelIndex + 1) % modelNames.length;
+                
+                // If we've circled all models, cycle the Key
+                if (currentModelIndex === 0) {
+                    apiTokenStatuses[currentKeyIndex].status = 'RATE LIMITED/ERRORED';
+                    currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
+                    apiTokenStatuses[currentKeyIndex].status = 'Active';
                 }
-
-                // Create a new session with the NEW key, but inject the old conversation history!
-                const newModel = getActiveModel();
-                activeChats[userId] = newModel.startChat({ history: oldHistory });
-
-                // The loop will now 'continue' and retry the exact same prompt with the new key
+                
                 continue;
+            } else {
+                break; // Proceed to Groq failover
             }
-
-            console.error("Gemini Error: ", error);
-            return "Oops, I encountered an error communicating with the AI!";
         }
     }
 
-    return "All Gemini API Keys are currently rate limited! Please wait a minute.";
+    // --- PHASE 2: FAILOVER TO GROQ ---
+    if (groqKeys.length > 0) {
+        console.warn("[FAILOVER] All Gemini keys exhausted. Switching to Groq...");
+        
+        try {
+            const groq = getGroqClient();
+            if (!groqHistories[userId]) {
+                const groqPersona = `${AGENT_PERSONA}\n\nIMPORTANT: You are a premium AI assistant. Your responses should be helpful, conversational, and stay in character. Avoid being robotic. Use emojis occasionally where appropriate, and keep your tone natural like a modern AI assistant.`;
+                groqHistories[userId] = [{ role: 'system', content: groqPersona }];
+            }
+            
+            // Sync Gemini history to Groq if first switch
+            if (groqHistories[userId].length === 1 && activeChats[userId]) {
+                try {
+                    const history = await activeChats[userId].getHistory();
+                    history.forEach(h => {
+                        const role = h.role === 'model' ? 'assistant' : 'user';
+                        const content = (h.parts || []).map(p => p.text || "").join("").trim();
+                        if (content) {
+                            groqHistories[userId].push({ role, content });
+                        }
+                    });
+                } catch (e) {
+                    console.log("[Groq Sync] Could not sync history:", e.message);
+                }
+            }
+
+            groqHistories[userId].push({ role: 'user', content: prompt });
+
+            // Tool definitions for Groq (OpenAI format)
+            const mapJsonSchema = (obj) => {
+                if (!obj || typeof obj !== 'object') return obj;
+                if (Array.isArray(obj)) return obj.map(mapJsonSchema);
+                const result = {};
+                for (const key in obj) {
+                    if (key === 'type' && typeof obj[key] === 'string') {
+                        result[key] = obj[key].toLowerCase();
+                    } else if (key === 'properties' || key === 'items' || typeof obj[key] === 'object') {
+                        result[key] = mapJsonSchema(obj[key]);
+                    } else {
+                        result[key] = obj[key];
+                    }
+                }
+                return result;
+            };
+
+            const groqTools = tools[0].functionDeclarations.map(fd => ({
+                type: 'function',
+                function: {
+                    name: fd.name,
+                    description: fd.description,
+                    parameters: fd.parameters ? mapJsonSchema(fd.parameters) : undefined
+                }
+            }));
+
+            // Debug log to catch schema errors in terminal
+            console.log(`[Groq Failover] Tools mapped. First tool params: ${JSON.stringify(groqTools[0].function.parameters?.type)}`);
+
+            let completion = await groq.chat.completions.create({
+                model: "llama-3.3-70b-versatile",
+                messages: groqHistories[userId],
+                tools: groqTools,
+            });
+
+            let responseMessage = completion.choices[0].message;
+
+            while (responseMessage.tool_calls) {
+                groqHistories[userId].push(responseMessage);
+                
+                for (const toolCall of responseMessage.tool_calls) {
+                    const toolName = toolCall.function.name;
+                    const toolArgs = JSON.parse(toolCall.function.arguments);
+                    
+                    if (updateCallback) updateCallback(`[Groq Backup] Executing: ${toolName}...`);
+                    const toolResult = await executeTool(toolName, toolArgs, originalMsg);
+
+                    groqHistories[userId].push({
+                        tool_call_id: toolCall.id,
+                        role: 'tool',
+                        name: toolName,
+                        content: String(toolResult),
+                    });
+                }
+
+                completion = await groq.chat.completions.create({
+                    model: "llama-3.3-70b-versatile",
+                    messages: groqHistories[userId],
+                });
+                responseMessage = completion.choices[0].message;
+            }
+
+            const finalText = responseMessage.content;
+            groqHistories[userId].push({ role: 'assistant', content: finalText });
+            
+            logUsage(prompt, finalText);
+            return finalText + "\n\n_(Response from Groq-Backup system)_";
+
+        } catch (groqError) {
+            console.error("Groq Error: ", groqError);
+            // Cycle Groq keys if this one failed
+            currentGroqIndex = (currentGroqIndex + 1) % groqKeys.length;
+            return "Oops, all AI systems are currently overloaded!";
+        }
+    }
+
+    return "All API systems are currently offline. Please wait.";
+}
+
+function logUsage(prompt, reply) {
+    try {
+        const words = (prompt.split(' ').length) + (reply.split(' ').length);
+        const today = new Date().toISOString().split('T')[0];
+        TokenUsage.findOneAndUpdate(
+            { dateString: today },
+            { $inc: { totalWordsSent: words }, $set: { lastUpdated: new Date() } },
+            { upsert: true }
+        ).catch(err => console.error("Quota Logging Error:", err.message));
+    } catch (e) {}
 }
 
 module.exports = { askGemini, getApiTokenStatus };

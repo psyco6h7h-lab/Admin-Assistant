@@ -111,22 +111,54 @@ async function exportDriveFile(fileId, mimeType) {
 
 async function shareDriveFile(fileId, emailAddress, role) {
     try {
-        const validRoles = ['reader', 'commenter', 'writer'];
-        if (!validRoles.includes(role)) {
-            return `Error: Invalid role '${role}'. Must be one of: reader, commenter, writer.`;
+        // Map human-friendly names to Google API roles
+        const roleMap = {
+            'editor': 'writer',
+            'writer': 'writer',
+            'viewer': 'reader',
+            'reader': 'reader',
+            'commenter': 'commenter'
+        };
+
+        const targetRole = roleMap[role.toLowerCase()] || 'reader';
+
+        const requestBody = {
+            role: targetRole,
+        };
+
+        // If it's a phone number or empty, share with "anyone"
+        const isPublicLink = !emailAddress || !emailAddress.includes('@');
+
+        if (!isPublicLink) {
+            requestBody.type = 'user';
+            requestBody.emailAddress = emailAddress;
+        } else {
+            requestBody.type = 'anyone';
+        }
+
+        // 🛡️ PREVENT ROLE OVERLAP: Delete old 'anyone' permissions so the new role is forced
+        try {
+            const listRes = await drive.permissions.list({ fileId: fileId });
+            const existingPermissions = listRes.data.permissions || [];
+            
+            for (const perm of existingPermissions) {
+                if (perm.type === 'anyone') {
+                    console.log(`[DRIVE] Removing old public permission: ${perm.id} (${perm.role})`);
+                    await drive.permissions.delete({ fileId: fileId, permissionId: perm.id });
+                }
+            }
+        } catch (listErr) {
+            console.warn(`[DRIVE] Warning: Could not clean old permissions: ${listErr.message}`);
         }
 
         const res = await drive.permissions.create({
             fileId: fileId,
-            requestBody: {
-                type: 'user',
-                role: role,
-                emailAddress: emailAddress
-            },
+            requestBody: requestBody,
             fields: 'id',
         });
 
-        return `Success! File shared with ${emailAddress} as a ${role}. (Permission ID: ${res.data.id})`;
+        const shareType = isPublicLink ? 'anyone with the link' : emailAddress;
+        return `Success! Permission updated. Now ${shareType} has '${targetRole}' access. Previous public roles were cleared.`;
     } catch (err) {
         return `Error sharing file: ${err.message}`;
     }

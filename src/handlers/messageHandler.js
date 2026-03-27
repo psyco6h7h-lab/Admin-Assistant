@@ -1,5 +1,11 @@
 const { askGemini, getApiTokenStatus } = require('../core/gemini');
 const TokenUsage = require('../database/models/TokenUsage');
+const { convertOggToWav, convertWavToOgg } = require('../services/audioConverter');
+const { transcribeAudio } = require('../services/speechToText');
+const { generateSpeech } = require('../services/textToSpeech');
+const { MessageMedia } = require('whatsapp-web.js');
+const fs = require('fs-extra');
+const path = require('path');
 
 // Set to track strangers who have already received the "testing" warning message
 const notifiedStrangers = new Set();
@@ -162,7 +168,65 @@ async function handleMessage(msg) {
         console.log(`[MEDIA DEBUG] hasMedia resolved to: ${hasMedia} (msg.hasMedia: ${msg.hasMedia}, msg.type: ${msg.type})`);
 
         if (hasMedia) {
-            return sendReply("Developer says 'this feature will come soon..... please corporate 😅' ");
+            // Check if it's a voice message (ptt = Push To Talk)
+            if (msg.type === 'ptt') {
+                console.log(`[VOICE] Voice message detected. Starting processing...`);
+                try {
+                    // 1. Download the media
+                    const media = await msg.downloadMedia();
+                    if (!media) throw new Error("Could not download media");
+
+                    const audioInputId = msg.id.id;
+                    const inputOggPath = path.join(__dirname, '..', 'audio', 'input', `${audioInputId}.ogg`);
+                    
+                    // Ensure directory exists
+                    await fs.ensureDir(path.dirname(inputOggPath));
+                    await fs.writeFile(inputOggPath, Buffer.from(media.data, 'base64'));
+
+                    // 2. Convert OGG to WAV (Whisper requirement)
+                    console.log(`[VOICE] Converting OGG to WAV...`);
+                    const inputWavPath = await convertOggToWav(inputOggPath);
+
+                    // 3. Transcribe with Whisper
+                    console.log(`[VOICE] Transcribing with Whisper...`);
+                    const transcribedText = await transcribeAudio(inputWavPath);
+                    console.log(`[VOICE] Transcribed: "${transcribedText}"`);
+
+                    if (!transcribedText) {
+                        return sendReply("I heard a voice message but couldn't understand the words. Could you try saying that again?");
+                    }
+
+                    // 4. Get AI Response
+                    const aiResponseText = await askGemini(msg.from, transcribedText, null, (status) => console.log(status), msg);
+
+                    try {
+                        // 5. Try to generate voice response
+                        console.log(`[VOICE] Generating voice response...`);
+                        const outputWavPath = await generateSpeech(aiResponseText);
+                        
+                        // 6. Convert back to OGG (WhatsApp requirement)
+                        const outputOggPath = await convertWavToOgg(outputWavPath);
+
+                        // 7. Send as Voice Note
+                        const voiceReply = MessageMedia.fromFilePath(outputOggPath);
+                        await msg.reply(voiceReply, null, { sendAudioAsVoice: true });
+                        
+                        // Cleanup
+                        await fs.remove(inputOggPath).catch(() => {});
+                        await fs.remove(inputWavPath).catch(() => {});
+                        // Optional: Keep output for a bit or cleanup
+                    } catch (ttsErr) {
+                        console.error(`[VOICE] TTS Error: ${ttsErr.message}. Falling back to text.`);
+                        return sendReply(aiResponseText);
+                    }
+                    return;
+                } catch (err) {
+                    console.error(`[VOICE] Pipeline Error:`, err);
+                    return sendReply("Sorry, I had trouble processing your voice message. I'll get back to you shortly!");
+                }
+            } else {
+                return sendReply("Developer says 'this feature will come soon..... please corporate 😅' ");
+            }
         }
 
         if (!prompt) {
@@ -176,7 +240,7 @@ async function handleMessage(msg) {
         // We also pass a callback function to log tool execution statuses in the terminal
         const aiResponse = await askGemini(msg.from, prompt, mediaPart, (statusText) => {
             console.log(statusText); // Log to server terminal instead of sending to WhatsApp
-        });
+        }, msg);
 
         // The loop is finished! Reply with the AI's final text
         return sendReply(aiResponse);

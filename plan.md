@@ -302,3 +302,26 @@ The WhatsApp voice agent will use:
 ✅ This architecture allows the WhatsApp bot to operate as a complete voice assistant.
 
 
+
+      USER SENDS VOICE (.ogg)
+               │
+               ▼
+  ┌───────────────────────────┐
+  │ 1. DOWNLOAD MEDIA         │ (Save to /input folder)
+  ├───────────────────────────┤
+  │ 2. CONVERT (OGG ➔ WAV)    │ (Using FFmpeg)
+  ├───────────────────────────┤
+  │ 3. WHISPER (STT)          │ (Transcribe audio to Text)
+  ├───────────────────────────┤
+  │ 4. AI AGENT BRAIN         │ (Think and generate reply text)
+  ├───────────────────────────┤
+  │ 5. PIPER (TTS)            │ (Convert reply text to .wav)
+  ├───────────────────────────┤
+  │ 6. CONVERT (WAV ➔ OGG)    │ (Encode for WhatsApp/Opus)
+  ├───────────────────────────┤
+  │ 7. SEND VOICE MESSAGE     │ (Reply back as a Voice Note)
+  └───────────────────────────┘
+               │
+               ▼
+      USER HEARS VOICE REPLY
+ 

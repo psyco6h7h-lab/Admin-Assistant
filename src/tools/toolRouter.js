@@ -4,6 +4,8 @@ const { searchFiles, createDriveFile, readFile, updateDriveFile, renameFile, del
 const { getStudentInfo, reportFault, listOpenFaults, listAllStudents, getAttendanceSummary, executeReadOnlyQuery } = require('../tools/databaseTool');
 const { webSearch } = require('../tools/webTool');
 const { broadcastMessage } = require('../tools/bulkMessageTool');
+const { performBrowserAction } = require('../tools/mcpBrowserTool');
+
 async function executeTool(toolName, args, originalMsg) {
     let result = '';
     try {
@@ -55,6 +57,8 @@ async function executeTool(toolName, args, originalMsg) {
             result = await webSearch(args.query);
         } else if (toolName === 'broadcastMessage') {
             result = await broadcastMessage(args.numbers, args.message);
+        } else if (toolName === 'browserAction') {
+            result = await performBrowserAction(args.action, args.url, args.selector, args.text, args.script);
         } else {
             result = `Error: Tool ${toolName} not found.`;
         }

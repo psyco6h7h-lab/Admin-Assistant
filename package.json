@@ -11,6 +11,8 @@
   "license": "ISC",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@modelcontextprotocol/sdk": "^1.28.0",
+    "@modelcontextprotocol/server-puppeteer": "^2025.5.12",
     "cheerio": "^1.2.0",
     "dotenv": "^17.3.1",
     "duck-duck-scrape": "^2.2.7",
@@ -20,6 +22,7 @@
     "google-it": "^1.6.4",
     "googleapis": "^171.4.0",
     "googlethis": "^1.8.0",
+    "groq-sdk": "^1.1.1",
     "mammoth": "^1.11.0",
     "mongoose": "^9.2.4",
     "open": "^11.0.0",
